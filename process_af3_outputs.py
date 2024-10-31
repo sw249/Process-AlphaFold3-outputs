@@ -6,7 +6,7 @@ import numpy as np
 from Bio.PDB import NeighborSearch
 from Bio.SeqUtils import seq1
 from Bio.PDB.Polypeptide import is_aa
-from Bio.PDB import MMCIFIO, Select, Structure, Chain, Model
+from Bio.PDB import MMCIFIO, Select, Structure, Chain, Model, MMCIFParser
 from Bio.PDB.Superimposer import Superimposer
 import logging
 from time import sleep

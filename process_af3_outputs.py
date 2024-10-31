@@ -3,10 +3,10 @@ import json
 import argparse
 import pandas as pd
 import numpy as np
-from Bio.PDB import MMCIFParser, NeighborSearch
+from Bio.PDB import NeighborSearch
 from Bio.SeqUtils import seq1
 from Bio.PDB.Polypeptide import is_aa
-from Bio.PDB import MMCIFParser, MMCIFIO, Select, Structure, Chain, Model
+from Bio.PDB import MMCIFIO, Select, Structure, Chain, Model, MMCIFParser
 from Bio.PDB.Superimposer import Superimposer
 import logging
 from time import sleep
@@ -21,12 +21,19 @@ logging.basicConfig(
 )
 
 def clean_dot_files(directory):
-    # Check if the directory exists
+    """
+    Cleans hidden macOS dot files (e.g., .DS_Store) from the specified directory.
+
+    Parameters:
+        directory (str): The path to the directory to clean.
+
+    Raises:
+        FileNotFoundError: If the specified directory does not exist.
+    """
     if not os.path.exists(directory):
         raise FileNotFoundError(f"Directory {directory} does not exist.")
 
     try:
-        # Run the dot_clean command on the specified directory
         result = subprocess.run(['dot_clean', directory], capture_output=True, text=True, check=True)
         print(f"dot_clean output: {result.stdout}")
         logging.info(f"Successfully cleaned dot files in the directory: {directory}")
@@ -64,6 +71,20 @@ def read_cif_file(file_path, retries=3):
     return None
 
 def check_interaction_criteria(summary_file, poi_chain, partner_chain, max_pae_cutoff, min_iptm_cutoff, min_ptm_cutoff):
+    """
+    Checks if the interaction criteria are met based on the summary file.
+
+    Parameters:
+        summary_file (str): The path to the summary file.
+        poi_chain (str): The chain identifier for the protein of interest.
+        partner_chain (str): The chain identifier for the potential interaction partner.
+        max_pae_cutoff (float): The maximum PAE cutoff value.
+        min_iptm_cutoff (float): The minimum iPTM cutoff value.
+        min_ptm_cutoff (float): The minimum PTM cutoff value.
+
+    Returns:
+        bool: True if the interaction criteria are met, False otherwise.
+    """
     try:
         with open(summary_file, 'r', encoding='utf-8') as file:
             data = json.load(file)
@@ -105,6 +126,15 @@ def check_interaction_criteria(summary_file, poi_chain, partner_chain, max_pae_c
     return True  # No errors and all checks passed
 
 def extract_pae_data(json_file_path):
+    """
+    Extracts PAE data from a JSON file and saves it as a CSV file.
+
+    Parameters:
+        json_file_path (str): The path to the JSON file.
+
+    Returns:
+        pd.DataFrame: The PAE data as a DataFrame if successfully extracted, otherwise None.
+    """
     try:
         with open(json_file_path, 'r') as file:
             data = json.load(file)
@@ -183,6 +213,20 @@ seq1_dict = {
 }
 
 def identify_interacting_residues(pae_df, chain_lengths, poi_chain, partner_chain, max_pae_cutoff, min_residues):
+    """
+    Identifies interacting residues based on PAE data and chain lengths.
+
+    Parameters:
+        pae_df (pd.DataFrame): The PAE data as a DataFrame.
+        chain_lengths (list): List of chain lengths.
+        poi_chain (str): The chain identifier for the protein of interest.
+        partner_chain (str): The chain identifier for the potential interaction partner.
+        max_pae_cutoff (float): The maximum PAE cutoff value.
+        min_residues (int): The minimum number of residues below the PAE cutoff.
+
+    Returns:
+        list: List of interacting residues.
+    """
     chain_indices = {chain: idx for idx, chain in enumerate(['A', 'B', 'C', 'D', 'E'])}
     poi_idx = chain_indices.get(poi_chain)
     partner_idx = chain_indices.get(partner_chain)
@@ -224,6 +268,19 @@ def identify_interacting_residues(pae_df, chain_lengths, poi_chain, partner_chai
     return interacting_residues
 
 def find_contact_residues(cif_file, poi_chain, partner_chain, interacting_residues, max_dist):
+    """
+    Finds contact residues between the protein of interest and the partner protein.
+
+    Parameters:
+        cif_file (str): The path to the CIF file.
+        poi_chain (str): The chain identifier for the protein of interest.
+        partner_chain (str): The chain identifier for the potential interaction partner.
+        interacting_residues (list): List of interacting residues.
+        max_dist (float): The maximum distance for contact residues.
+
+    Returns:
+        dict: Dictionary mapping partner residues to contact residues in the protein of interest.
+    """
     parser = MMCIFParser()
     structure = parser.get_structure("model_0", cif_file)
 
@@ -286,6 +343,15 @@ def find_consecutive_groups(numbers, max_gap=2, min_length=3):
     return groups
 
 def process_consecutive_interactions(contact_map):
+    """
+    Processes consecutive interactions from the contact map.
+
+    Parameters:
+        contact_map (dict): Dictionary mapping partner residues to contact residues in the protein of interest.
+
+    Returns:
+        dict: Dictionary mapping consecutive partner residue groups to consecutive contact residue groups.
+    """
     consecutive_interactions = {}
 
     sorted_keys = sorted(contact_map.keys())
@@ -302,6 +368,16 @@ def process_consecutive_interactions(contact_map):
     return consecutive_interactions
 
 def save_to_csv(data, poi_chain, partner_chain, max_pae_cutoff, max_dist):
+    """
+    Saves the interaction analysis data to a CSV file.
+
+    Parameters:
+        data (list): List of dictionaries containing interaction analysis data.
+        poi_chain (str): The chain identifier for the protein of interest.
+        partner_chain (str): The chain identifier for the potential interaction partner.
+        max_pae_cutoff (float): The maximum PAE cutoff value.
+        max_dist (float): The maximum distance for contact residues.
+    """
     filename = f'interaction_analysis_PAE_{max_pae_cutoff}_max_dist_{max_dist}.csv'
     fieldnames = [
         'Folder_name', 
@@ -336,6 +412,16 @@ class ResidueSelect(Select):
         return False
 
 def create_interaction_cif(original_cif_file, output_cif_file, poi_chain, partner_chain, consecutive_interactions):
+    """
+    Creates a CIF file containing only the interacting residues.
+
+    Parameters:
+        original_cif_file (str): The path to the original CIF file.
+        output_cif_file (str): The path to the output CIF file.
+        poi_chain (str): The chain identifier for the protein of interest.
+        partner_chain (str): The chain identifier for the potential interaction partner.
+        consecutive_interactions (list): List of consecutive interaction groups.
+    """
     parser = MMCIFParser()
     structure = parser.get_structure("model_0", original_cif_file)
     io = MMCIFIO()
@@ -345,6 +431,19 @@ def create_interaction_cif(original_cif_file, output_cif_file, poi_chain, partne
     io.save(output_cif_file, select=select)
 
 def process_full_data_files(binder_dir, poi_chain, partner_chain, max_pae_cutoff, min_residues, max_dist, collected_data, output_dir):
+    """
+    Processes full data files in the binder directory and extracts interaction information.
+
+    Parameters:
+        binder_dir (str): The path to the binder directory.
+        poi_chain (str): The chain identifier for the protein of interest.
+        partner_chain (str): The chain identifier for the potential interaction partner.
+        max_pae_cutoff (float): The maximum PAE cutoff value.
+        min_residues (int): The minimum number of residues below the PAE cutoff.
+        max_dist (float): The maximum distance for contact residues.
+        collected_data (list): List to collect interaction analysis data.
+        output_dir (str): The path to the output directory for saving interaction CIF files.
+    """
     dir_name = os.path.basename(binder_dir)
     cif_file = os.path.join(binder_dir, f"{dir_name}_model_0.cif")
 
@@ -390,6 +489,14 @@ def extract_and_save_model(cif_file, poi_chain, partner_chain, consecutive_inter
     """
     Extracts the POI and relevant partner protein regions from a CIF file,
     and saves them into a new CIF file named as model_X.cif (e.g., model_0.cif).
+
+    Parameters:
+        cif_file (str): The path to the CIF file.
+        poi_chain (str): The chain identifier for the protein of interest.
+        partner_chain (str): The chain identifier for the potential interaction partner.
+        consecutive_interactions (list): List of consecutive interaction groups.
+        model_index (int): The model index.
+        output_dir (str): The path to the output directory for saving the extracted model.
     """
     logging.info(f"Extracting and saving model from {cif_file} (model index: {model_index})")
     try:
@@ -434,6 +541,15 @@ def process_overlay_files(binder_dir, poi_chain, partner_chain, max_pae_cutoff, 
     Processes all CIF files in a directory, creating individual CIF files
     for each model and saving them in a corresponding folder within the overlay directory.
     Generates a PyMOL script (.pml) to align and save the models.
+
+    Parameters:
+        binder_dir (str): The path to the binder directory.
+        poi_chain (str): The chain identifier for the protein of interest.
+        partner_chain (str): The chain identifier for the potential interaction partner.
+        max_pae_cutoff (float): The maximum PAE cutoff value.
+        min_residues (int): The minimum number of residues below the PAE cutoff.
+        max_dist (float): The maximum distance for contact residues.
+        overlay_output_dir (str): The path to the overlay output directory.
     """
     logging.info(f"Processing overlay files in directory: {binder_dir}")
     try:
@@ -544,6 +660,19 @@ def process_directory(input_dir, poi_chain, partner_chain, max_pae_cutoff, min_i
     """
     Processes the input directory, creating overlay directories and saving individual
     CIF models for each folder, and generates PyMOL scripts for alignment.
+
+    Parameters:
+        input_dir (str): The path to the input directory containing subfolders with AlphaFold3 outputs.
+        poi_chain (str): The chain identifier for the protein of interest.
+        partner_chain (str): The chain identifier for the potential interaction partner.
+        max_pae_cutoff (float): The maximum PAE cutoff value.
+        min_iptm_cutoff (float): The minimum iPTM cutoff value.
+        min_ptm_cutoff (float): The minimum PTM cutoff value.
+        min_residues (int): The minimum number of residues below the PAE cutoff.
+        max_dist (float): The maximum distance for contact residues.
+
+    Returns:
+        dict: Dictionary mapping directory paths to boolean values indicating if they meet the interaction criteria.
     """
     results = {}
     collected_data = []
